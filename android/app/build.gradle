@@ -1,0 +1,71 @@
+plugins { id 'com.android.application' }
+
+def setting = { name -> providers.gradleProperty(name).orElse(providers.environmentVariable(name)).getOrElse('') }
+def productionAdUnit = setting('YANDEX_REWARDED_AD_UNIT_ID')
+def adsDisabled = setting('YANDEX_ADS_DISABLED').equalsIgnoreCase('true')
+def signingPath = setting('ANDROID_KEYSTORE_PATH')
+def signingPassword = setting('ANDROID_KEYSTORE_PASSWORD')
+def signingAlias = setting('ANDROID_KEY_ALIAS')
+def signingKeyPassword = setting('ANDROID_KEY_PASSWORD')
+def signingReady = [signingPath, signingPassword, signingAlias, signingKeyPassword].every { !it.isEmpty() }
+def quote = { value -> '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"' }
+
+android {
+    namespace 'ru.dachatrunk.game'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'ru.dachatrunk.game'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0'
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    signingConfigs {
+        release {
+            if (signingReady) {
+                storeFile file(signingPath)
+                storePassword signingPassword
+                keyAlias signingAlias
+                keyPassword signingKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+            buildConfigField 'String', 'YANDEX_REWARDED_AD_UNIT_ID', '"demo-rewarded-yandex"'
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField 'String', 'YANDEX_REWARDED_AD_UNIT_ID', quote(adsDisabled ? '' : productionAdUnit)
+        }
+    }
+}
+
+tasks.register('validateReleaseConfiguration') {
+    doLast {
+        if (!signingReady) throw new GradleException('Release needs ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. Keep the keystore outside the repository.')
+        if (!adsDisabled && (productionAdUnit.isEmpty() || productionAdUnit.toLowerCase().contains('demo'))) {
+            throw new GradleException('Release needs a real YANDEX_REWARDED_AD_UNIT_ID. For an explicitly ad-free initial release, set YANDEX_ADS_DISABLED=true. Test ads are allowed only in debug.')
+        }
+    }
+}
+tasks.configureEach { task ->
+    if (task.name == 'preReleaseBuild') task.dependsOn 'validateReleaseConfiguration'
+}
+
+dependencies {
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.webkit:webkit:1.14.0'
+    implementation 'com.yandex.android:mobileads:8.6.0'
+    implementation 'ru.rustore.sdk:review:10.5.2'
+}

@@ -1,0 +1,138 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "src/**"
+      - "public/**"
+      - "scripts/**"
+      - "index.html"
+      - "package*.json"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "src/**"
+      - "public/**"
+      - "scripts/**"
+      - "index.html"
+      - "package*.json"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "debug — тестовая реклама; release — подписанная сборка с реальным рекламным блоком"
+        required: true
+        default: debug
+        type: choice
+        options: [debug, release]
+      ads_disabled:
+        description: "Release без рекламы, если производственный блок Яндекса ещё не настроен"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}-${{ inputs.build_type || 'debug' }}
+  cancel-in-progress: true
+
+jobs:
+  debug:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_type == 'debug'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: node scripts/sync-android.mjs
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build APK with test ads
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dacha-trunk-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_type == 'release'
+    runs-on: ubuntu-latest
+    environment: android-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Check release configuration
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          YANDEX_REWARDED_AD_UNIT_ID: ${{ vars.YANDEX_REWARDED_AD_UNIT_ID }}
+          YANDEX_ADS_DISABLED: ${{ inputs.ads_disabled && 'true' || 'false' }}
+        run: |
+          for name in KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing release setting: $name"
+              exit 1
+            fi
+          done
+          if [[ "$YANDEX_ADS_DISABLED" != 'true' && ( -z "$YANDEX_REWARDED_AD_UNIT_ID" || "$YANDEX_REWARDED_AD_UNIT_ID" == *demo* ) ]]; then
+            echo '::error::Release requires a production rewarded ad unit.'
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/dacha-release.jks"
+          chmod 600 "$RUNNER_TEMP/dacha-release.jks"
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: node scripts/sync-android.mjs
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build signed APK and AAB
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/dacha-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          YANDEX_REWARDED_AD_UNIT_ID: ${{ vars.YANDEX_REWARDED_AD_UNIT_ID }}
+          YANDEX_ADS_DISABLED: ${{ inputs.ads_disabled && 'true' || 'false' }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease bundleRelease
+      - name: Upload signed build for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: dacha-trunk-signed-release
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary signing file
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/dacha-release.jks"

@@ -1,0 +1,14 @@
+{
+  "name": "dacha-trunk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Багажник на дачу — уютная головоломка для Android и браузера",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.js",
+    "android:sync": "node scripts/sync-android.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
