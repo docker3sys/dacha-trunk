@@ -55,6 +55,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v4
       - run: npm ci
       - run: npm test
       - run: npm run build
@@ -86,6 +88,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v4
       - name: Check release configuration
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
