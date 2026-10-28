@@ -4,6 +4,10 @@
 
 [Играть в браузере](https://docker3sys.github.io/dacha-trunk/) · [Сообщить о проблеме](https://github.com/docker3sys/dacha-trunk/issues)
 
+[Скачать APK 1.0.0 для Android](https://github.com/docker3sys/dacha-trunk/releases/download/v1.0.0/dacha-trunk-1.0.0.apk) · [Релиз и AAB](https://github.com/docker3sys/dacha-trunk/releases/tag/v1.0.0)
+
+Первая подписанная версия работает без рекламы. Android 8.0 и новее. [Игровые скриншоты](docs/store-assets/) сняты с этой сборки.
+
 ## Версии
 
 | Версия | Назначение |
